@@ -1,0 +1,1 @@
+"""Core module for Gmail MCP server."""
