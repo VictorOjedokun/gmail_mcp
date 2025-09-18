@@ -1,5 +1,3 @@
-"""MCP tools for advanced Gmail operations (drafts, threads, attachments)."""
-
 from typing import Optional, List
 import json
 import logging

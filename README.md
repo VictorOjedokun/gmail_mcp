@@ -36,17 +36,8 @@ uvicorn main:app --reload --port 8002
 ### Complete Gmail Integration
 - **25 MCP Tools** covering all Gmail operations
 - **OAuth 2.0 Authentication** with Google token validation
-- **Streamable HTTP Transport** by default (configurable)
-- **Message Formats** - 5 different formats (MINIMAL, COMPACT, FULL, RAW, METADATA)
-- **Date Range Filtering** - Absolute dates and relative timeframes
-- **Production-Ready** error handling and comprehensive logging
 - **Type Safety** with comprehensive Pydantic models
 
-### Streamable Transport
-- **Default**: Streamable HTTP for optimal performance
-- **Alternative**: Server-Sent Events (SSE) available
-- **Real-time**: Streaming responses for large email operations
-- **Efficient**: Reduced memory usage for bulk operations
 
 ## Tools available (25 Total)
 
