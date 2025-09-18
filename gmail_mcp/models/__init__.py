@@ -15,6 +15,7 @@ class LabelType(str, Enum):
 class MessageFormat(str, Enum):
     """Gmail message format types."""
     MINIMAL = "minimal"
+    COMPACT = "compact"  # MINIMAL + subject, sender, date, body_text
     FULL = "full"
     RAW = "raw"
     METADATA = "metadata"

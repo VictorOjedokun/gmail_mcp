@@ -5,11 +5,12 @@ import json
 import logging
 
 from mcp.server import FastMCP
-from fastapi import HTTPException, Depends
+from fastapi import HTTPException
+from mcp.server.fastmcp.server import Context
 
 from ..services import GmailService
 from ..models import ForwardEmailRequest, CreateDraftRequest, ThreadListRequest
-from ..dependencies import get_gmail_service
+from ..dependencies import get_access_token, get_gmail_service
 
 
 logger = logging.getLogger(__name__)
@@ -24,12 +25,12 @@ def register_advanced_tools(mcp: FastMCP):
 
     @mcp.tool()
     async def forward_email(
+        ctx: Context,
         message_id: str,
         to: List[str],
         cc: Optional[List[str]] = None,
         bcc: Optional[List[str]] = None,
         additional_message: Optional[str] = None,
-        gmail_service: GmailService = Depends(get_gmail_service),
     ) -> str:
         """Forward an email to other recipients.
 
@@ -39,16 +40,21 @@ def register_advanced_tools(mcp: FastMCP):
             cc: CC recipients
             bcc: BCC recipients
             additional_message: Additional message to include with forward
-            token_info: Token information (injected)
+            ctx: MCP context for logging and progress
 
         Returns:
             JSON string with forward status and message ID
         """
+        access_token: str = get_access_token(ctx)
+        gmail_service: GmailService = get_gmail_service(access_token=access_token)
         try:
-            # GmailService is injected via dependency injection
+            # Forward the email using the Gmail service
 
             request = ForwardEmailRequest(
-                to=to, cc=cc, bcc=bcc, additional_message=additional_message
+                to=to,
+                cc=cc,
+                bcc=bcc,
+                additional_message=additional_message,
             )
 
             forwarded_message_id = await gmail_service.forward_message(message_id, request)
@@ -68,10 +74,10 @@ def register_advanced_tools(mcp: FastMCP):
 
     @mcp.tool()
     async def move_to_folder(
+        ctx: Context,
         message_id: str,
         folder_label_id: str,
         remove_inbox: bool = True,
-        gmail_service: GmailService = Depends(get_gmail_service),
     ) -> str:
         """Move an email to a specific folder/label.
 
@@ -79,13 +85,14 @@ def register_advanced_tools(mcp: FastMCP):
             message_id: Message ID to move
             folder_label_id: Target folder/label ID (e.g., 'TRASH', 'SPAM', or custom label ID)
             remove_inbox: Whether to remove from INBOX when moving
-            token_info: Token information (injected)
+            ctx: MCP context for logging and progress
 
         Returns:
             JSON string with move status
         """
+        access_token: str = get_access_token(ctx)
+        gmail_service: GmailService = get_gmail_service(access_token=access_token)
         try:
-            # GmailService is injected via dependency injection
 
             from ..models import ModifyLabelsRequest
 
@@ -96,7 +103,8 @@ def register_advanced_tools(mcp: FastMCP):
                 remove_labels.append("INBOX")
 
             request = ModifyLabelsRequest(
-                add_label_ids=add_labels, remove_label_ids=remove_labels if remove_labels else None
+                add_label_ids=add_labels,
+                remove_label_ids=remove_labels if remove_labels else None,
             )
 
             updated_message = await gmail_service.modify_message_labels(message_id, request)
@@ -117,12 +125,12 @@ def register_advanced_tools(mcp: FastMCP):
 
     @mcp.tool()
     async def get_threads(
+        ctx: Context,
         max_results: int = 10,
         label_ids: Optional[List[str]] = None,
         query: Optional[str] = None,
         include_spam_trash: bool = False,
         page_token: Optional[str] = None,
-        gmail_service: GmailService = Depends(get_gmail_service),
     ) -> str:
         """Get email threads/conversations.
 
@@ -132,11 +140,13 @@ def register_advanced_tools(mcp: FastMCP):
             query: Gmail search query
             include_spam_trash: Include spam and trash
             page_token: Token for pagination
-            token_info: Token information (injected)
+            ctx: MCP context for logging and progress
 
         Returns:
-            JSON string containing threads list
+            JSON string with threads list
         """
+        access_token: str = get_access_token(ctx)
+        gmail_service: GmailService = get_gmail_service(access_token=access_token)
         try:
             # GmailService is injected via dependency injection
 
@@ -165,6 +175,7 @@ def register_advanced_tools(mcp: FastMCP):
 
     @mcp.tool()
     async def create_draft(
+        ctx: Context,
         to: List[str],
         subject: str,
         body_text: Optional[str] = None,
@@ -173,7 +184,6 @@ def register_advanced_tools(mcp: FastMCP):
         bcc: Optional[List[str]] = None,
         thread_id: Optional[str] = None,
         in_reply_to: Optional[str] = None,
-        gmail_service: GmailService = Depends(get_gmail_service),
     ) -> str:
         """Create a draft email.
 
@@ -186,11 +196,13 @@ def register_advanced_tools(mcp: FastMCP):
             bcc: BCC recipients
             thread_id: Thread ID for replies
             in_reply_to: Message ID being replied to
-            token_info: Token information (injected)
+            ctx: MCP context for logging and progress
 
         Returns:
-            JSON string with draft creation status and draft ID
+            JSON string with draft creation status
         """
+        access_token: str = get_access_token(ctx)
+        gmail_service: GmailService = get_gmail_service(access_token=access_token)
         try:
             if not body_text and not body_html:
                 return json.dumps({"error": "Either body_text or body_html must be provided"})
@@ -224,20 +236,22 @@ def register_advanced_tools(mcp: FastMCP):
 
     @mcp.tool()
     async def get_drafts(
+        ctx: Context,
         max_results: int = 10,
         page_token: Optional[str] = None,
-        gmail_service: GmailService = Depends(get_gmail_service),
     ) -> str:
         """Get list of draft emails.
 
         Args:
             max_results: Maximum number of drafts to return
             page_token: Token for pagination
-            token_info: Token information (injected)
+            ctx: MCP context for logging and progress
 
         Returns:
             JSON string containing drafts list
         """
+        access_token: str = get_access_token(ctx)
+        gmail_service: GmailService = get_gmail_service(access_token=access_token)
         try:
             # GmailService is injected via dependency injection
 
@@ -258,19 +272,22 @@ def register_advanced_tools(mcp: FastMCP):
 
     @mcp.tool()
     async def send_draft(
-        draft_id: str, gmail_service: GmailService = Depends(get_gmail_service)
+        ctx: Context,
+        draft_id: str,
     ) -> str:
         """Send an existing draft email.
 
         Args:
             draft_id: Draft ID to send
-            token_info: Token information (injected)
+            ctx: MCP context for logging and progress
 
         Returns:
             JSON string with send status and message ID
         """
+        access_token: str = get_access_token(ctx)
+        gmail_service: GmailService = get_gmail_service(access_token=access_token)
         try:
-            # GmailService is injected via dependency injection
+            # Send the draft email
 
             message_id = await gmail_service.send_draft(draft_id)
 
@@ -289,20 +306,22 @@ def register_advanced_tools(mcp: FastMCP):
 
     @mcp.tool()
     async def get_attachments(
+        ctx: Context,
         message_id: str,
         attachment_id: Optional[str] = None,
-        gmail_service: GmailService = Depends(get_gmail_service),
     ) -> str:
         """Download email attachments.
 
         Args:
             message_id: Message ID containing attachments
             attachment_id: Specific attachment ID (if None, returns info about all attachments)
-            token_info: Token information (injected)
+            ctx: MCP context for logging and progress
 
         Returns:
             JSON string with attachment data or list of attachments
         """
+        access_token: str = get_access_token(ctx)
+        gmail_service: GmailService = get_gmail_service(access_token=access_token)
         try:
             # GmailService is injected via dependency injection
 

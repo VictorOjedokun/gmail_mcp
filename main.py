@@ -49,7 +49,7 @@ mcp = FastMCP(
     token_verifier=token_verifier,
     auth=AuthSettings(
         issuer_url="https://accounts.google.com",  # Google OAuth issuer
-        required_scopes=["gmail"],  # Require Gmail scope
+        required_scopes=settings.required_scopes,  # Require Gmail scope
         resource_server_url=settings.server_url,
     ),
 )
@@ -70,12 +70,14 @@ async def lifespan(app: FastAPI):
     logger.info("Google OAuth issuer: https://accounts.google.com")
     logger.info("Token validation: Google tokeninfo endpoint")
     logger.info("Required scopes: gmail")
-    
+
     # Use the session manager's run() context manager
     async with mcp.session_manager.run():
         yield
-    
+
     logger.info("Gmail MCP Server stopped")
+
+
 # Create FastAPI app
 app = FastAPI(
     title="Gmail MCP Server",
@@ -96,10 +98,15 @@ async def root():
         "oauth_issuer": "https://accounts.google.com",
         "token_validation": "https://www.googleapis.com/oauth2/v1/tokeninfo",
         "required_scopes": ["gmail"],
+        "message_formats": {
+            "default": "COMPACT",
+            "supported": ["MINIMAL", "COMPACT", "FULL", "RAW", "METADATA"],
+            "description": "All reading tools support MessageFormat parameter. COMPACT gives you essential data + body text for optimal performance."
+        },
         "tools": [
-            # Reading tools (5/5)
+            # Reading tools (5/5) - Now support MessageFormat
             "get_emails",
-            "get_email_by_id",
+            "get_email_by_id", 
             "search_emails",
             "get_labels",
             "get_profile",
@@ -128,11 +135,11 @@ async def root():
             "oauth_endpoint": "https://accounts.google.com/oauth/authorize",
             "scopes_required": [
                 "https://www.googleapis.com/auth/gmail.readonly",
-                "https://www.googleapis.com/auth/gmail.send", 
+                "https://www.googleapis.com/auth/gmail.send",
                 "https://www.googleapis.com/auth/gmail.modify",
                 "https://www.googleapis.com/auth/gmail.compose",
-                "https://www.googleapis.com/auth/gmail.labels"
-            ]
+                "https://www.googleapis.com/auth/gmail.labels",
+            ],
         },
     }
 
