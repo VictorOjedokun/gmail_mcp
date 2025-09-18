@@ -24,11 +24,15 @@ def register_reading_tools(mcp: FastMCP):
     """
 
     @mcp.tool()
-    async def get_emails(
+    async def gmail_get_emails(
         ctx: Context,
         max_results: int = 10,
         label_ids: Optional[List[str]] = None,
         query: Optional[str] = None,
+        after_date: Optional[str] = None,
+        before_date: Optional[str] = None,
+        newer_than: Optional[str] = None,
+        older_than: Optional[str] = None,
         include_spam_trash: bool = False,
         page_token: Optional[str] = None,
         format: MessageFormat = MessageFormat.COMPACT,
@@ -39,6 +43,10 @@ def register_reading_tools(mcp: FastMCP):
             max_results: Maximum number of emails to return (1-500)
             label_ids: Filter by label IDs (e.g., ['INBOX', 'UNREAD'])
             query: Gmail search query (e.g., 'from:example@gmail.com')
+            after_date: Get emails after this date (YYYY-MM-DD or YYYY/MM/DD)
+            before_date: Get emails before this date (YYYY-MM-DD or YYYY/MM/DD)
+            newer_than: Get emails newer than timeframe (e.g., '1d', '2w', '3m', '1y')
+            older_than: Get emails older than timeframe (e.g., '1d', '2w', '3m', '1y')
             include_spam_trash: Include spam and trash emails
             page_token: Token for pagination
             format: Message format (MINIMAL, COMPACT, FULL, RAW, METADATA)
@@ -64,7 +72,11 @@ def register_reading_tools(mcp: FastMCP):
             email_request = EmailListRequest(
                 max_results=max_results,
                 label_ids=label_ids or [],
-                q=query,
+                query=query,
+                after_date=after_date,
+                before_date=before_date,
+                newer_than=newer_than,
+                older_than=older_than,
                 include_spam_trash=include_spam_trash,
                 page_token=page_token,
             )
@@ -81,7 +93,7 @@ def register_reading_tools(mcp: FastMCP):
             raise HTTPException(status_code=500, detail=f"Failed to get emails: {str(e)}")
 
     @mcp.tool()
-    async def get_email_by_id(
+    async def gmail_get_email_by_id(
         ctx: Context,
         email_id: str,
         format: MessageFormat = MessageFormat.COMPACT,
@@ -120,11 +132,15 @@ def register_reading_tools(mcp: FastMCP):
             raise HTTPException(status_code=500, detail=f"Failed to get email: {str(e)}")
 
     @mcp.tool()
-    async def search_emails(
+    async def gmail_search_emails(
         ctx: Context,
         query: str,
         max_results: int = 10,
         label_ids: Optional[List[str]] = None,
+        after_date: Optional[str] = None,
+        before_date: Optional[str] = None,
+        newer_than: Optional[str] = None,
+        older_than: Optional[str] = None,
         include_spam_trash: bool = False,
         page_token: Optional[str] = None,
         format: MessageFormat = MessageFormat.COMPACT,
@@ -135,6 +151,10 @@ def register_reading_tools(mcp: FastMCP):
             query: Gmail search query (e.g., 'from:example@gmail.com subject:urgent')
             max_results: Maximum number of results (1-500)
             label_ids: Filter by label IDs
+            after_date: Search emails after this date (YYYY-MM-DD or YYYY/MM/DD)
+            before_date: Search emails before this date (YYYY-MM-DD or YYYY/MM/DD)
+            newer_than: Search emails newer than timeframe (e.g., '1d', '2w', '3m', '1y')
+            older_than: Search emails older than timeframe (e.g., '1d', '2w', '3m', '1y')
             include_spam_trash: Include spam and trash in search
             page_token: Token for pagination
             format: Message format (MINIMAL, COMPACT, FULL, RAW, METADATA)
@@ -155,12 +175,14 @@ def register_reading_tools(mcp: FastMCP):
         try:
             logger.info(f"Searching emails with query: {query}, format: {format}")
 
-            # GmailService is injected with the access token already configured
-
             search_request = SearchEmailsRequest(
                 query=query,
                 max_results=max_results,
                 label_ids=label_ids or [],
+                after_date=after_date,
+                before_date=before_date,
+                newer_than=newer_than,
+                older_than=older_than,
                 include_spam_trash=include_spam_trash,
                 page_token=page_token,
             )
@@ -176,7 +198,7 @@ def register_reading_tools(mcp: FastMCP):
             raise HTTPException(status_code=500, detail=f"Failed to search emails: {str(e)}")
 
     @mcp.tool()
-    async def get_labels(ctx: Context) -> str:
+    async def gmail_get_labels(ctx: Context) -> str:
         """Get all Gmail labels.
 
         Args:
@@ -202,7 +224,7 @@ def register_reading_tools(mcp: FastMCP):
             raise HTTPException(status_code=500, detail=f"Failed to get labels: {str(e)}")
 
     @mcp.tool()
-    async def get_profile(ctx: Context) -> str:
+    async def gmail_get_profile(ctx: Context) -> str:
         """Get Gmail profile information.
 
         Args:
@@ -216,7 +238,6 @@ def register_reading_tools(mcp: FastMCP):
         try:
             logger.info("Fetching Gmail profile")
 
-            # GmailService is injected with the access token already configured
             profile = await gmail_service.get_profile()
 
             logger.info(f"Retrieved profile for {profile.email_address}")
@@ -226,3 +247,66 @@ def register_reading_tools(mcp: FastMCP):
         except Exception as e:
             logger.error(f"Error getting profile: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to get profile: {str(e)}")
+
+    @mcp.tool()
+    async def gmail_get_my_sent_emails(
+        ctx: Context,
+        max_results: int = 10,
+        after_date: Optional[str] = None,
+        before_date: Optional[str] = None,
+        newer_than: Optional[str] = None,
+        older_than: Optional[str] = None,
+        query: Optional[str] = None,
+        page_token: Optional[str] = None,
+        format: MessageFormat = MessageFormat.COMPACT,
+    ) -> str:
+        """Get emails sent by the authenticated user.
+
+        Args:
+            max_results: Maximum number of sent emails to return (1-500)
+            after_date: Get sent emails after this date (YYYY-MM-DD or YYYY/MM/DD)
+            before_date: Get sent emails before this date (YYYY-MM-DD or YYYY/MM/DD)
+            newer_than: Get sent emails newer than timeframe (e.g., '1d', '2w', '3m', '1y')
+            older_than: Get sent emails older than timeframe (e.g., '1d', '2w', '3m', '1y')
+            query: Additional Gmail search query to combine with sent filter
+            page_token: Token for pagination
+            format: Message format (MINIMAL, COMPACT, FULL, RAW, METADATA)
+
+        Returns:
+            JSON string with sent emails list response
+
+        Format Details:
+            - MINIMAL: id, threadId, labelIds only (fastest, but limited info)
+            - COMPACT: MINIMAL + subject, sender, date, body_text (recommended)
+            - FULL: Complete message including body, headers, attachments
+            - RAW: Raw RFC2822 message
+            - METADATA: Headers and labels only (no body)
+        """
+        access_token: str = get_access_token(ctx)
+        gmail_service: GmailService = get_gmail_service(access_token=access_token)
+        try:
+            logger.info(f"Fetching {max_results} sent emails with format {format}")
+
+            # Create request object with SENT label filter
+            email_request = EmailListRequest(
+                max_results=max_results,
+                label_ids=["SENT"],  # Always filter by SENT label
+                query=query,
+                after_date=after_date,
+                before_date=before_date,
+                newer_than=newer_than,
+                older_than=older_than,
+                include_spam_trash=False,  # Don't include spam/trash for sent emails
+                page_token=page_token,
+            )
+
+            # Get emails with specified format
+            response = await gmail_service.list_messages(email_request, format.value)
+
+            logger.info(f"Retrieved {len(response.messages)} sent emails")
+
+            return json.dumps(response.model_dump(), default=str)
+
+        except Exception as e:
+            logger.error(f"Error getting sent emails: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to get sent emails: {str(e)}")

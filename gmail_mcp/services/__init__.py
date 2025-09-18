@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 from ..models import (
     Message,
+    MessageFormat,
     Thread,
     Label,
     Draft,
@@ -33,6 +34,7 @@ from ..models import (
     ForwardEmailRequest,
     CreateDraftRequest,
     ThreadListRequest,
+    DraftListRequest,
     EmailListResponse,
     ThreadListResponse,
     LabelListResponse,
@@ -173,13 +175,13 @@ class GmailService:
                 body_html=None,
                 attachments=[],
             )
-        
+
         elif format == "compact":
             # Extract minimal content (text only, no attachments)
             plain_text = ""
             if payload:
                 plain_text, _, _ = self._extract_message_content(payload)
-            
+
             return Message(
                 **base_data,
                 payload=None,  # Don't include full payload for efficiency
@@ -192,7 +194,7 @@ class GmailService:
                 body_html=None,  # Skip HTML for efficiency
                 attachments=[],  # Skip attachments for efficiency
             )
-        
+
         else:
             # Full parsing for FULL, METADATA, RAW formats
             plain_text, html_text, attachments = self._extract_message_content(payload)
@@ -228,7 +230,47 @@ class GmailService:
             logger.error(f"Error getting profile: {e}")
             raise
 
-    async def list_messages(self, request: EmailListRequest, format: str = "full") -> EmailListResponse:
+    def _build_date_query(
+        self,
+        after_date: Optional[str] = None,
+        before_date: Optional[str] = None,
+        newer_than: Optional[str] = None,
+        older_than: Optional[str] = None,
+    ) -> str:
+        """Build date-related query parts for Gmail search.
+
+        Args:
+            after_date: Search emails after this date (YYYY-MM-DD or YYYY/MM/DD)
+            before_date: Search emails before this date (YYYY-MM-DD or YYYY/MM/DD)
+            newer_than: Emails newer than timeframe (e.g., '1d', '2w', '3m', '1y')
+            older_than: Emails older than timeframe (e.g., '1d', '2w', '3m', '1y')
+
+        Returns:
+            String with date query parts
+        """
+        date_parts = []
+
+        if after_date:
+            # Convert to Gmail format if needed (both YYYY-MM-DD and YYYY/MM/DD work)
+            date_parts.append(f"after:{after_date}")
+
+        if before_date:
+            # Convert to Gmail format if needed
+            date_parts.append(f"before:{before_date}")
+
+        if newer_than:
+            # Validate format (should be like 1d, 2w, 3m, 1y)
+            date_parts.append(f"newer_than:{newer_than}")
+
+        if older_than:
+            # Validate format (should be like 1d, 2w, 3m, 1y)
+            date_parts.append(f"older_than:{older_than}")
+
+        return " ".join(date_parts)
+
+    async def list_messages(
+        self, request: EmailListRequest, format: str = "full"
+    ) -> EmailListResponse:
         """List messages based on request criteria.
 
         Args:
@@ -245,10 +287,25 @@ class GmailService:
                 "includeSpamTrash": request.include_spam_trash,
             }
 
+            # Build query string with date filters
+            query_parts = []
+            if request.query:
+                query_parts.append(request.query)
+
+            date_query = self._build_date_query(
+                after_date=request.after_date,
+                before_date=request.before_date,
+                newer_than=request.newer_than,
+                older_than=request.older_than,
+            )
+            if date_query:
+                query_parts.append(date_query)
+
+            if query_parts:
+                query_params["q"] = " ".join(query_parts)
+
             if request.label_ids:
                 query_params["labelIds"] = request.label_ids
-            if request.q:
-                query_params["q"] = request.q
             if request.page_token:
                 query_params["pageToken"] = request.page_token
 
@@ -259,8 +316,8 @@ class GmailService:
                 # Map our custom formats to Gmail API formats
                 gmail_api_format = format
                 if format == "compact":
-                    gmail_api_format = "metadata"  # Get headers but not full body data
-                
+                    gmail_api_format = "full"  # Get headers but not full body data
+
                 # Get message details with specified format
                 full_msg = (
                     self.service.users()
@@ -293,8 +350,8 @@ class GmailService:
             # Map our custom formats to Gmail API formats
             gmail_api_format = format
             if format == "compact":
-                gmail_api_format = "metadata"  # Get headers but not full body data
-            
+                gmail_api_format = "full"  # Get headers but not full body data
+
             msg_data = (
                 self.service.users()
                 .messages()
@@ -306,7 +363,11 @@ class GmailService:
             logger.error(f"Error getting message {message_id}: {e}")
             raise
 
-    async def search_messages(self, request: SearchEmailsRequest, format: str = "full") -> EmailListResponse:
+    async def search_messages(
+        self,
+        request: SearchEmailsRequest,
+        format: MessageFormat = MessageFormat.FULL,
+    ) -> EmailListResponse:
         """Search messages using Gmail query syntax.
 
         Args:
@@ -317,13 +378,29 @@ class GmailService:
             EmailListResponse with matching messages
         """
         try:
+            # Build query string with date filters
+            query_parts = [request.query]
+
+            date_query = self._build_date_query(
+                after_date=request.after_date,
+                before_date=request.before_date,
+                newer_than=request.newer_than,
+                older_than=request.older_than,
+            )
+            if date_query:
+                query_parts.append(date_query)
+
+            final_query = " ".join(query_parts)
+
             query_params = {
                 "userId": "me",
-                "q": request.query,
+                "q": final_query,
                 "maxResults": request.max_results,
                 "includeSpamTrash": request.include_spam_trash,
             }
 
+            if request.label_ids:
+                query_params["labelIds"] = request.label_ids
             if request.page_token:
                 query_params["pageToken"] = request.page_token
 
@@ -332,17 +409,17 @@ class GmailService:
             messages = []
             for msg in result.get("messages", []):
                 # Map our custom formats to Gmail API formats
-                gmail_api_format = format
-                if format == "compact":
-                    gmail_api_format = "metadata"  # Get headers but not full body data
-                
+                gmail_api_format = format.__str__()
+                if format == MessageFormat.COMPACT:
+                    gmail_api_format = "full"  # Get headers but not full body data
+
                 full_msg = (
                     self.service.users()
                     .messages()
                     .get(userId="me", id=msg["id"], format=gmail_api_format)
                     .execute()
                 )
-                messages.append(self._parse_message(full_msg, format))
+                messages.append(self._parse_message(full_msg, format.__str__()))
 
             return EmailListResponse(
                 messages=messages,
@@ -617,6 +694,21 @@ class GmailService:
             ThreadListResponse with threads
         """
         try:
+            # Build search query with date filters
+            search_query_parts = []
+
+            if request.q:
+                search_query_parts.append(request.q)
+
+            if request.after:
+                search_query_parts.append(f"after:{request.after}")
+
+            if request.before:
+                search_query_parts.append(f"before:{request.before}")
+
+            # Combine all query parts
+            final_query = " ".join(search_query_parts) if search_query_parts else None
+
             query_params = {
                 "userId": "me",
                 "maxResults": request.max_results,
@@ -625,12 +717,16 @@ class GmailService:
 
             if request.label_ids:
                 query_params["labelIds"] = request.label_ids
-            if request.q:
-                query_params["q"] = request.q
+            if final_query:
+                query_params["q"] = final_query
             if request.page_token:
                 query_params["pageToken"] = request.page_token
 
             result = self.service.users().threads().list(**query_params).execute()
+
+            gmail_api_format = request.message_format.__str__()
+            if gmail_api_format == "compact":
+                gmail_api_format = "full"
 
             threads = []
             for thread_data in result.get("threads", []):
@@ -638,13 +734,13 @@ class GmailService:
                 full_thread = (
                     self.service.users()
                     .threads()
-                    .get(userId="me", id=thread_data["id"], format="full")
+                    .get(userId="me", id=thread_data["id"], format=gmail_api_format)
                     .execute()
                 )
 
                 messages = []
                 for msg_data in full_thread.get("messages", []):
-                    messages.append(self._parse_message(msg_data))
+                    messages.append(self._parse_message(msg_data, request.message_format.__str__()))
 
                 thread = Thread(
                     id=full_thread["id"],
@@ -661,6 +757,51 @@ class GmailService:
             )
         except Exception as e:
             logger.error(f"Error listing threads: {e}")
+            raise
+
+    async def get_thread(
+        self,
+        thread_id: str,
+        format: MessageFormat = MessageFormat.COMPACT,
+    ) -> Thread:
+        """Get a specific thread by ID.
+
+        Args:
+            thread_id: Thread ID to retrieve
+            format: Format for messages (minimal, full, metadata, raw)
+
+        Returns:
+            Thread object with messages
+        """
+        try:
+
+            gmail_api_format = format.__str__()
+            if gmail_api_format == MessageFormat.COMPACT.__str__():
+                gmail_api_format = "full"
+            # Get full thread details
+            full_thread = (
+                self.service.users()
+                .threads()
+                .get(userId="me", id=thread_id, format=gmail_api_format)
+                .execute()
+            )
+
+            # Parse messages
+            messages = []
+            for msg_data in full_thread.get("messages", []):
+                message = self._parse_message(msg_data, format.__str__())
+                messages.append(message)
+
+            thread = Thread(
+                id=full_thread["id"],
+                snippet=full_thread.get("snippet"),
+                history_id=full_thread.get("historyId"),
+                messages=messages,
+            )
+
+            return thread
+        except Exception as e:
+            logger.error(f"Error getting thread {thread_id}: {e}")
             raise
 
     async def create_draft(self, request: CreateDraftRequest) -> str:
@@ -712,18 +853,37 @@ class GmailService:
             raise
 
     async def list_drafts(
-        self, max_results: int = 10, page_token: Optional[str] = None
+        self,
+        request: Optional[DraftListRequest] = None,
+        max_results: int = 10,
+        page_token: Optional[str] = None,
+        format: MessageFormat = MessageFormat.COMPACT,
     ) -> DraftListResponse:
         """List draft emails.
 
         Args:
-            max_results: Maximum number of drafts to return
-            page_token: Page token for pagination
+            request: Draft list request (preferred)
+            max_results: Maximum number of drafts to return (legacy)
+            page_token: Page token for pagination (legacy)
+            format: Message format (legacy)
 
         Returns:
             DraftListResponse with drafts
         """
         try:
+            # Use request object if provided, otherwise use legacy parameters
+            if request:
+                max_results = request.max_results
+                page_token = request.page_token
+                format = request.message_format
+                search_query = request.q
+                after_date = request.after
+                before_date = request.before
+            else:
+                search_query = None
+                after_date = None
+                before_date = None
+
             query_params = {"userId": "me", "maxResults": max_results}
 
             if page_token:
@@ -731,17 +891,53 @@ class GmailService:
 
             result = self.service.users().drafts().list(**query_params).execute()
 
+            gmail_api_format = format.__str__()
+            if gmail_api_format == MessageFormat.COMPACT:
+                gmail_api_format = MessageFormat.FULL.__str__()
+
             drafts = []
             for draft_data in result.get("drafts", []):
                 # Get full draft details
                 full_draft = (
                     self.service.users()
                     .drafts()
-                    .get(userId="me", id=draft_data["id"], format="full")
+                    .get(userId="me", id=draft_data["id"], format=gmail_api_format)
                     .execute()
                 )
 
-                message = self._parse_message(full_draft["message"])
+                message = self._parse_message(full_draft["message"], format.__str__())
+
+                # Apply date filtering if specified (since Gmail drafts API doesn't support search queries)
+                if after_date or before_date:
+                    # Parse message date for filtering
+                    message_date = message.date
+                    if message_date:
+                        from datetime import datetime
+
+                        try:
+                            # Parse message date
+                            msg_date = datetime.fromisoformat(message_date.replace("Z", "+00:00"))
+                            msg_date_str = msg_date.strftime("%Y/%m/%d")
+
+                            # Apply filters
+                            if after_date and msg_date_str <= after_date:
+                                continue
+                            if before_date and msg_date_str >= before_date:
+                                continue
+                        except:
+                            # If date parsing fails, include the draft
+                            pass
+
+                # Apply text search if specified
+                if search_query:
+                    # Simple text search in subject and body
+                    subject = message.subject or ""
+                    body = message.body_text or ""
+                    if (
+                        search_query.lower() not in subject.lower()
+                        and search_query.lower() not in body.lower()
+                    ):
+                        continue
 
                 draft = Draft(id=full_draft["id"], message=message)
                 drafts.append(draft)
@@ -753,6 +949,37 @@ class GmailService:
             )
         except Exception as e:
             logger.error(f"Error listing drafts: {e}")
+            raise
+
+    async def get_draft(self, draft_id: str, format: MessageFormat = MessageFormat.COMPACT) -> Draft:
+        """Get a specific draft by ID.
+
+        Args:
+            draft_id: Draft ID to retrieve
+            format: Format for message (minimal, full, metadata, raw)
+
+        Returns:
+            Draft object
+        """
+        try:
+            gmail_api_format = format.__str__()
+            if gmail_api_format == MessageFormat.COMPACT.__str__():
+                gmail_api_format = MessageFormat.FULL.__str__()
+
+            # Get full draft details
+            full_draft = (
+                self.service.users()
+                .drafts()
+                .get(userId="me", id=draft_id, format=gmail_api_format)
+                .execute()
+            )
+
+            message = self._parse_message(full_draft["message"], format.__str__())
+            draft = Draft(id=full_draft["id"], message=message)
+
+            return draft
+        except Exception as e:
+            logger.error(f"Error getting draft {draft_id}: {e}")
             raise
 
     async def send_draft(self, draft_id: str) -> str:

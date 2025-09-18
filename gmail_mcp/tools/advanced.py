@@ -9,7 +9,7 @@ from fastapi import HTTPException
 from mcp.server.fastmcp.server import Context
 
 from ..services import GmailService
-from ..models import ForwardEmailRequest, CreateDraftRequest, ThreadListRequest
+from ..models import ForwardEmailRequest, CreateDraftRequest, MessageFormat, ThreadListRequest
 from ..dependencies import get_access_token, get_gmail_service
 
 
@@ -24,7 +24,7 @@ def register_advanced_tools(mcp: FastMCP):
     """
 
     @mcp.tool()
-    async def forward_email(
+    async def gmail_forward_email(
         ctx: Context,
         message_id: str,
         to: List[str],
@@ -73,7 +73,7 @@ def register_advanced_tools(mcp: FastMCP):
             return json.dumps({"error": str(e), "success": False}, indent=2)
 
     @mcp.tool()
-    async def move_to_folder(
+    async def gmail_move_to_folder(
         ctx: Context,
         message_id: str,
         folder_label_id: str,
@@ -124,13 +124,15 @@ def register_advanced_tools(mcp: FastMCP):
             return json.dumps({"error": str(e), "success": False}, indent=2)
 
     @mcp.tool()
-    async def get_threads(
+    async def gmail_get_threads(
         ctx: Context,
         max_results: int = 10,
         label_ids: Optional[List[str]] = None,
         query: Optional[str] = None,
         include_spam_trash: bool = False,
         page_token: Optional[str] = None,
+        after: Optional[str] = None,
+        before: Optional[str] = None,
     ) -> str:
         """Get email threads/conversations.
 
@@ -140,6 +142,8 @@ def register_advanced_tools(mcp: FastMCP):
             query: Gmail search query
             include_spam_trash: Include spam and trash
             page_token: Token for pagination
+            after: Show threads after this date (YYYY/MM/DD format)
+            before: Show threads before this date (YYYY/MM/DD format)
             ctx: MCP context for logging and progress
 
         Returns:
@@ -156,6 +160,8 @@ def register_advanced_tools(mcp: FastMCP):
                 q=query,
                 include_spam_trash=include_spam_trash,
                 page_token=page_token,
+                after=after,
+                before=before,
             )
 
             response = await gmail_service.list_threads(request)
@@ -174,7 +180,40 @@ def register_advanced_tools(mcp: FastMCP):
             return json.dumps({"error": str(e)}, indent=2)
 
     @mcp.tool()
-    async def create_draft(
+    async def gmail_get_thread_by_id(
+        ctx: Context,
+        thread_id: str,
+        format: MessageFormat = MessageFormat.COMPACT,
+    ) -> str:
+        """Get a specific email thread by ID.
+
+        Args:
+            thread_id: Thread ID to retrieve
+            format: Message format (minimal, full, metadata, raw)
+            ctx: MCP context for logging and progress
+
+        Returns:
+            JSON string with thread details
+        """
+        access_token: str = get_access_token(ctx)
+        gmail_service: GmailService = get_gmail_service(access_token=access_token)
+        try:
+            thread = await gmail_service.get_thread(thread_id, format)
+
+            result = {
+                "success": True,
+                "thread": thread.model_dump(),
+                "message_count": len(thread.messages),
+            }
+
+            return json.dumps(result, indent=2, default=str)
+
+        except Exception as e:
+            logger.error(f"Error in get_thread_by_id: {e}")
+            return json.dumps({"error": str(e), "success": False}, indent=2)
+
+    @mcp.tool()
+    async def gmail_create_draft(
         ctx: Context,
         to: List[str],
         subject: str,
@@ -235,16 +274,24 @@ def register_advanced_tools(mcp: FastMCP):
             return json.dumps({"error": str(e), "success": False}, indent=2)
 
     @mcp.tool()
-    async def get_drafts(
+    async def gmail_get_drafts(
         ctx: Context,
         max_results: int = 10,
         page_token: Optional[str] = None,
+        format: MessageFormat = MessageFormat.COMPACT,
+        query: Optional[str] = None,
+        after: Optional[str] = None,
+        before: Optional[str] = None,
     ) -> str:
         """Get list of draft emails.
 
         Args:
             max_results: Maximum number of drafts to return
             page_token: Token for pagination
+            format: Message format
+            query: Search query (searches in subject and body)
+            after: Show drafts after this date (YYYY/MM/DD format)
+            before: Show drafts before this date (YYYY/MM/DD format)
             ctx: MCP context for logging and progress
 
         Returns:
@@ -253,9 +300,19 @@ def register_advanced_tools(mcp: FastMCP):
         access_token: str = get_access_token(ctx)
         gmail_service: GmailService = get_gmail_service(access_token=access_token)
         try:
-            # GmailService is injected via dependency injection
+            # Import DraftListRequest
+            from ..models import DraftListRequest
 
-            response = await gmail_service.list_drafts(max_results, page_token)
+            request = DraftListRequest(
+                max_results=max_results,
+                page_token=page_token,
+                message_format=format,
+                q=query,
+                after=after,
+                before=before,
+            )
+
+            response = await gmail_service.list_drafts(request)
 
             result = {
                 "drafts": [draft.model_dump() for draft in response.drafts],
@@ -271,7 +328,40 @@ def register_advanced_tools(mcp: FastMCP):
             return json.dumps({"error": str(e)}, indent=2)
 
     @mcp.tool()
-    async def send_draft(
+    async def gmail_get_draft_by_id(
+        ctx: Context,
+        draft_id: str,
+        format: MessageFormat = MessageFormat.FULL,
+    ) -> str:
+        """Get a specific draft by ID.
+
+        Args:
+            draft_id: Draft ID to retrieve
+            format: Message format (minimal, full, metadata, raw)
+            ctx: MCP context for logging and progress
+
+        Returns:
+            JSON string with draft details
+        """
+        access_token: str = get_access_token(ctx)
+        gmail_service: GmailService = get_gmail_service(access_token=access_token)
+        try:
+            draft = await gmail_service.get_draft(draft_id, format)
+
+            result = {
+                "success": True,
+                "draft": draft.model_dump(),
+                "message": f"Draft {draft_id} retrieved successfully",
+            }
+
+            return json.dumps(result, indent=2, default=str)
+
+        except Exception as e:
+            logger.error(f"Error in get_draft_by_id: {e}")
+            return json.dumps({"error": str(e), "success": False}, indent=2)
+
+    @mcp.tool()
+    async def gmail_send_draft(
         ctx: Context,
         draft_id: str,
     ) -> str:
@@ -305,7 +395,7 @@ def register_advanced_tools(mcp: FastMCP):
             return json.dumps({"error": str(e), "success": False}, indent=2)
 
     @mcp.tool()
-    async def get_attachments(
+    async def gmail_get_attachments(
         ctx: Context,
         message_id: str,
         attachment_id: Optional[str] = None,

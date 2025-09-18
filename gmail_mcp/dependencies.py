@@ -37,7 +37,7 @@ def get_gmail_service(access_token: str = Depends(get_access_token)) -> GmailSer
     """Get GmailService instance with access token.
 
     Args:
-        access_token: OAuth access token (injected by dependency)
+        access_token: OAuth access token
 
     Returns:
         Configured GmailService instance

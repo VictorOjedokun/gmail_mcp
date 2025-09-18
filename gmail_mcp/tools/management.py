@@ -24,7 +24,7 @@ def register_management_tools(mcp: FastMCP):
     """
 
     @mcp.tool()
-    async def send_email(
+    async def gmail_send_email(
         ctx: Context,
         to: List[str],
         subject: str,
@@ -83,7 +83,7 @@ def register_management_tools(mcp: FastMCP):
             raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
 
     @mcp.tool()
-    async def reply_to_email(
+    async def gmail_reply_to_email(
         ctx: Context,
         message_id: str,
         body_text: Optional[str] = None,
@@ -150,7 +150,7 @@ def register_management_tools(mcp: FastMCP):
             return json.dumps({"error": str(e), "success": False}, indent=2)
 
     @mcp.tool()
-    async def mark_as_read(
+    async def gmail_mark_as_read(
         ctx: Context,
         message_id: str,
     ) -> str:
@@ -180,7 +180,7 @@ def register_management_tools(mcp: FastMCP):
             return json.dumps({"error": str(e), "success": False}, indent=2)
 
     @mcp.tool()
-    async def mark_as_unread(
+    async def gmail_mark_as_unread(
         ctx: Context,
         message_id: str,
     ) -> str:
@@ -214,7 +214,7 @@ def register_management_tools(mcp: FastMCP):
             return json.dumps({"error": str(e), "success": False}, indent=2)
 
     @mcp.tool()
-    async def archive_email(
+    async def gmail_archive_email(
         ctx: Context,
         message_id: str,
     ) -> str:
@@ -248,7 +248,41 @@ def register_management_tools(mcp: FastMCP):
             return json.dumps({"error": str(e), "success": False}, indent=2)
 
     @mcp.tool()
-    async def delete_email(ctx: Context, message_id: str) -> str:
+    async def gmail_unarchive_email(
+        ctx: Context,
+        message_id: str,
+    ) -> str:
+        """Unarchive an email (add back to INBOX).
+
+        Args:
+            message_id: Message ID to unarchive
+            ctx: MCP context for logging and progress
+
+        Returns:
+            JSON string with operation status
+        """
+        access_token: str = get_access_token(ctx)
+        gmail_service: GmailService = get_gmail_service(access_token=access_token)
+        try:
+            # Unarchive email by adding INBOX label
+
+            request = ModifyLabelsRequest(add_label_ids=["INBOX"])
+            await gmail_service.modify_message_labels(message_id, request)
+
+            result = {
+                "success": True,
+                "message_id": message_id,
+                "message": "Email unarchived successfully",
+            }
+
+            return json.dumps(result, indent=2)
+
+        except Exception as e:
+            logger.error(f"Error in unarchive_email: {e}")
+            return json.dumps({"error": str(e), "success": False}, indent=2)
+
+    @mcp.tool()
+    async def gmail_delete_email(ctx: Context, message_id: str) -> str:
         """Delete an email permanently.
 
         Args:
@@ -283,7 +317,7 @@ def register_management_tools(mcp: FastMCP):
             return json.dumps({"error": str(e), "success": False}, indent=2)
 
     @mcp.tool()
-    async def add_label(ctx: Context, message_id: str, label_ids: List[str]) -> str:
+    async def gmail_add_label(ctx: Context, message_id: str, label_ids: List[str]) -> str:
         """Add labels to an email.
 
         Args:
@@ -315,7 +349,7 @@ def register_management_tools(mcp: FastMCP):
             return json.dumps({"error": str(e), "success": False}, indent=2)
 
     @mcp.tool()
-    async def remove_label(ctx: Context, message_id: str, label_ids: List[str]) -> str:
+    async def gmail_remove_label(ctx: Context, message_id: str, label_ids: List[str]) -> str:
         """Remove labels from an email.
 
         Args:
@@ -347,7 +381,7 @@ def register_management_tools(mcp: FastMCP):
             return json.dumps({"error": str(e), "success": False}, indent=2)
 
     @mcp.tool()
-    async def create_label(
+    async def gmail_create_label(
         ctx: Context,
         name: str,
         message_list_visibility: str = "show",
