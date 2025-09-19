@@ -4,24 +4,36 @@ from pydantic import BaseModel, Field, ConfigDict
 from enum import StrEnum
 
 
-class LabelType(StrEnum):
+class CaseInsensitiveStrEnum(StrEnum):
+    """Case insensitive string enum."""
+
+    @classmethod
+    def _missing_(cls, value: object) -> Optional["CaseInsensitiveStrEnum"]:
+        if isinstance(value, str):
+            for member in cls:
+                if member.value.lower() == value.lower():
+                    return member
+        return None
+
+
+class LabelType(CaseInsensitiveStrEnum):
     """Gmail label types."""
 
     SYSTEM = "system"
     USER = "user"
 
 
-class MessageFormat(StrEnum):
+class MessageFormat(CaseInsensitiveStrEnum):
     """Gmail message format types."""
 
     MINIMAL = "minimal"
-    COMPACT = "compact"  # MINIMAL + subject, sender, date, body_text
+    COMPACT = "compact"
     FULL = "full"
     RAW = "raw"
     METADATA = "metadata"
 
 
-class ThreadFormat(StrEnum):
+class ThreadFormat(CaseInsensitiveStrEnum):
     """Gmail thread format types."""
 
     MINIMAL = "minimal"
