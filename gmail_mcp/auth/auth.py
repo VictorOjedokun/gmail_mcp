@@ -93,15 +93,9 @@ class GmailTokenVerifier(TokenVerifier):
             # Use our existing TokenValidator to validate the token
             token_info = await self.token_validator.validate_token(token)
 
-            print(f"The token is: {token_info.model_dump()}")
-
             if not token_info:
                 return None
 
-            print("Returning token")
-            scopes = token_info.scope.split() if token_info.scope else []
-
-            print(f"Scopes: {scopes}")
 
             return AccessToken(
                 token=token,
