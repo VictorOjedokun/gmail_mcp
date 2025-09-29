@@ -1,9 +1,18 @@
-fastapi==0.115.2
-uvicorn[standard]==0.31.0
-mcp==0.1.0
-pydantic==2.9.2
-requests==2.32.3
-python-dotenv==1.0.1
-google-api-python-client==2.149.0
+# Core server
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+
+# MCP framework
+mcp>=0.2.0
+
+# Google API for Gmail
+google-api-python-client==2.153.0
 google-auth==2.35.0
 google-auth-oauthlib==1.2.1
+google-auth-httplib2==0.2.0
+
+# Utils
+requests==2.32.3
+python-dotenv==1.0.1
+
+
