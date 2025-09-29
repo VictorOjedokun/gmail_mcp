@@ -53,7 +53,7 @@ jobs:
             [Service]
             User=ubuntu
             WorkingDirectory=/home/ubuntu/Gmail-MCP
-            ExecStart=/home/ubuntu/Gmail-MCP/venv/bin/python main.py
+            ExecStart=/home/ubuntu/Gmail-MCP/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000
             Restart=always
             Environment="PATH=/home/ubuntu/Gmail-MCP/venv/bin"
 
