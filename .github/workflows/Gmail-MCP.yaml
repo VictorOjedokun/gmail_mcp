@@ -13,6 +13,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+
       - name: Copy files to EC2
         uses: appleboy/scp-action@master
         with:
@@ -20,7 +26,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           source: "."
-          target: "/home/ubuntu/Gmail-MCP"
+          target: "/home/${{ secrets.SSH_USER }}/src/Google-Calendar-MCP"
 
       - name: SSH Setup and Deploy
         uses: appleboy/ssh-action@master
@@ -31,26 +37,26 @@ jobs:
           script: |
             set -e
 
-            DOMAIN="${{ secrets.MCP_DOMAIN }}"  
-            EMAIL="${{ secrets.MCP_EMAIL }}"    
+            DOMAIN_NAME="${{ secrets.MCP_DOMAIN }}"  
+            MCP_EMAIL="${{ secrets.MCP_EMAIL }}"    
 
             # --- System Dependencies ---
             sudo apt update && sudo apt upgrade -y
             sudo apt install -y python3 python3-pip python3-venv git nginx certbot python3-certbot-nginx
 
-            # --- Clone or Update Repo ---
+            # --- Navigate to file path ---
             
-              cd /home/ubuntu/Gmail-MCP
+            cd /home/${{ secrets.SSH_USER }}/src/Google-Calendar-MCP
              
 
             # --- Python Virtual Environment ---
-            cd /home/ubuntu/Gmail-MCP
+            cd /home/${{ secrets.SSH_USER }}/src/Google-Calendar-MCP
             python3 -m venv venv
             source venv/bin/activate
-            pip install --upgrade pip
-            if [ -f requirements.txt ]; then
-              pip install -r requirements.txt
-            fi
+            
+            # Install dependencies with uv
+            uv sync --frozen
+
 
             # --- Systemd Service File ---
             ServiceFile=/etc/systemd/system/Gmail-MCP.service
@@ -61,10 +67,11 @@ jobs:
 
             [Service]
             User=ubuntu
-            WorkingDirectory=/home/ubuntu/Gmail-MCP
-            ExecStart=/home/ubuntu/Gmail-MCP/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000
+            WorkingDirectory=/home/${{ secrets.SSH_USER }}/src/Google-Calendar-MCP
+            EnvironmentFile=-/etc/google-calendar-mcp.env
+            ExecStart=/home/${{ secrets.SSH_USER }}/src/Google-Calendar-MCP/venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8000
             Restart=always
-            Environment="PATH=/home/ubuntu/Gmail-MCP/venv/bin"
+            Environment="PATH=/home/${{ secrets.SSH_USER }}/src/Google-Calendar-MCP/venv/bin"
 
             [Install]
             WantedBy=multi-user.target
@@ -79,11 +86,11 @@ jobs:
             # Disable default site
             sudo rm -f /etc/nginx/sites-enabled/default
 
-            NginxFile=/etc/nginx/sites-available/gmail-mcp
+            NginxFile=/etc/nginx/sites-available/gmail-mcp.conf
             sudo bash -c "cat > $NginxFile" << 'EOL'
             server {
                 listen 80;
-                server_name gmail-mcp.peterakande.com;  
+                server_name ${DOMAIN_NAME};  
 
                 location / {
                     proxy_pass http://127.0.0.1:8000/;  
@@ -97,7 +104,7 @@ jobs:
             }
             EOL
 
-            sudo ln -sf $NginxFile /etc/nginx/sites-enabled/gmail-mcp
+            sudo ln -sf $NginxFile /etc/nginx/sites-enabled/gmail-mcp.conf
             sudo nginx -t
             sudo systemctl restart nginx
 
