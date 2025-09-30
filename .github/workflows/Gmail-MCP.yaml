@@ -96,7 +96,8 @@ jobs:
             sudo systemctl restart nginx
 
             # --- Obtain SSL with Certbot ---
-            sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos -m $EMAIL --redirect
+            sudo certbot --nginx -d $DOMAIN --non-interactive --agree-tos -m $EMAIL
+
 
             # --- Test Renewal ---
             sudo certbot renew --dry-run
