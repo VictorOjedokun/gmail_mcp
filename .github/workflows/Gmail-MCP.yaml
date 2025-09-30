@@ -22,9 +22,12 @@ jobs:
           script: |
             set -e
 
+            DOMAIN="${{ secrets.MCP_DOMAIN }}"  
+            EMAIL="${{ secrets.MCP_EMAIL }}"    
+
             # --- System Dependencies ---
             sudo apt update && sudo apt upgrade -y
-            sudo apt install -y python3 python3-pip python3-venv git nginx
+            sudo apt install -y python3 python3-pip python3-venv git nginx certbot python3-certbot-nginx
 
             # --- Clone or Update Repo ---
             if [ ! -d "/home/ubuntu/Gmail-MCP" ]; then
@@ -74,10 +77,10 @@ jobs:
             sudo bash -c "cat > $NginxFile" << 'EOL'
             server {
                 listen 80;
-                server_name _;  # Replace _ with your domain if needed
+                server_name ${DOMAIN};  
 
                 location / {
-                    proxy_pass http://127.0.0.1:8000/;  # Note trailing slash
+                    proxy_pass http://127.0.0.1:8000/;  
                     proxy_http_version 1.1;
                     proxy_set_header Host $host;
                     proxy_set_header X-Real-IP $remote_addr;
@@ -92,4 +95,8 @@ jobs:
             sudo nginx -t
             sudo systemctl restart nginx
 
-            
+            # --- Obtain SSL with Certbot ---
+            sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN --non-interactive --agree-tos -m $EMAIL --redirect
+
+            # --- Test Renewal ---
+            sudo certbot renew --dry-run
